@@ -1,0 +1,33 @@
+declare const env: Readonly<{
+    NODE_ENV: "development" | "production" | "test";
+    PORT: number;
+    API_VERSION: string;
+    MONGODB_URI: string;
+    REDIS_HOST: string;
+    REDIS_PORT: number;
+    REDIS_PASSWORD: string;
+    JWT_ACCESS_SECRET: string;
+    JWT_REFRESH_SECRET: string;
+    JWT_ACCESS_EXPIRY: string;
+    JWT_REFRESH_EXPIRY: string;
+    GOOGLE_CLIENT_ID: string;
+    GOOGLE_CLIENT_SECRET: string;
+    GOOGLE_CALLBACK_URL: string;
+    STRIPE_SECRET_KEY: string;
+    STRIPE_WEBHOOK_SECRET: string;
+    STRIPE_PUBLISHABLE_KEY: string;
+    RAZORPAY_KEY_ID: string;
+    RAZORPAY_KEY_SECRET: string;
+    RAZORPAY_WEBHOOK_SECRET: string;
+    RESEND_API_KEY: string;
+    FROM_EMAIL: string;
+    TWILIO_ACCOUNT_SID: string;
+    TWILIO_AUTH_TOKEN: string;
+    TWILIO_PHONE_NUMBER: string;
+    ML_SERVICE_URL: string;
+    FRONTEND_URL: string;
+    HOLD_DURATION_MINUTES: number;
+    LOCK_TTL_MS: number;
+} & import("envalid").CleanedEnvAccessors>;
+export default env;
+//# sourceMappingURL=environment.d.ts.map
