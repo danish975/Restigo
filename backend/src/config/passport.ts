@@ -29,7 +29,7 @@ if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
           });
 
           // Pass the generated JWT tokens and user back
-          return done(null, result);
+          return done(null, result as any);
         } catch (error: any) {
           logger.error({ err: error }, 'Google authentication error');
           return done(error);
