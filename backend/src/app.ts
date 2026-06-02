@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import mongoSanitize from 'express-mongo-sanitize';
 import hpp from 'hpp';
+import passport from 'passport';
 import { globalErrorHandler, notFoundHandler } from './core/middleware/errorHandler';
 import env from './config/environment';
 
@@ -60,6 +61,9 @@ app.use(cookieParser());
 app.use(mongoSanitize());
 app.use(hpp());
 app.use(compression());
+
+// Initialize Passport
+app.use(passport.initialize());
 
 // ─── Health Check ───
 app.get('/health', (_req, res) => {

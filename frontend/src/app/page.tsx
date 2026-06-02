@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, useScroll, useTransform } from "framer-motion";
 import { Navbar } from "@/components/shared/navbar";
 import { Footer } from "@/components/shared/footer";
 import {
   Search, Clock, MapPin, Star, Zap, Shield, ArrowRight, Building2,
   Laptop, BedDouble, Coffee, Users, ChevronRight, Sparkles, Timer,
+  CheckCircle2, CalendarClock, CreditCard, Globe,
 } from "lucide-react";
 
 const SPACE_TYPES = [
@@ -24,7 +25,14 @@ const STATS = [
   { value: "10K+", label: "Spaces Listed" },
   { value: "50K+", label: "Bookings Made" },
   { value: "25+", label: "Cities" },
-  { value: "4.8★", label: "Avg Rating" },
+  { value: "4.8★", label: "Average Rating" },
+];
+
+const TRUST_ITEMS = [
+  { icon: Zap, label: "Instant Booking" },
+  { icon: CalendarClock, label: "Real-Time Availability" },
+  { icon: CreditCard, label: "Secure Payments" },
+  { icon: Clock, label: "Flexible Hourly Stays" },
 ];
 
 const FEATURES = [
@@ -36,13 +44,67 @@ const FEATURES = [
   { icon: Clock, title: "Real-Time Updates", desc: "Live inventory sync. Slots update instantly across all devices.", color: "text-blue-400" },
 ];
 
+const SPACE_TYPE_OPTIONS = [
+  { value: "", label: "Any Space" },
+  { value: "hotel", label: "Hotel Room" },
+  { value: "coworking", label: "Coworking" },
+  { value: "nap_pod", label: "Rest Pod" },
+  { value: "lounge", label: "Lounge" },
+  { value: "meeting_room", label: "Meeting Room" },
+  { value: "capsule_hotel", label: "Capsule Hotel" },
+];
+
+const DURATION_OPTIONS = [
+  { value: "", label: "Any Duration" },
+  { value: "1", label: "1 Hour" },
+  { value: "2", label: "2 Hours" },
+  { value: "3", label: "3 Hours" },
+  { value: "4", label: "4 Hours" },
+  { value: "6", label: "6 Hours" },
+  { value: "8", label: "8 Hours" },
+  { value: "12", label: "12 Hours" },
+  { value: "24", label: "24 Hours" },
+];
+
+/* ─── Animation Variants ─── */
+const staggerContainer = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.08 } },
+};
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 24 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
+};
+
+const fadeIn = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { duration: 0.5 } },
+};
+
 export default function HomePage() {
   const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState("");
+  const [location, setLocation] = useState("");
+  const [spaceType, setSpaceType] = useState("");
+  const [duration, setDuration] = useState("");
+
+  /* Parallax ref */
+  const heroRef = useRef<HTMLElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: heroRef,
+    offset: ["start start", "end start"],
+  });
+  const heroY = useTransform(scrollYProgress, [0, 1], ["0%", "20%"]);
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    router.push(`/search${searchQuery ? `?q=${encodeURIComponent(searchQuery)}` : ''}`);
+    const params = new URLSearchParams();
+    if (location) params.set("q", location);
+    if (spaceType) params.set("type", spaceType);
+    if (duration) params.set("duration", duration);
+    const qs = params.toString();
+    router.push(`/search${qs ? `?${qs}` : ""}`);
   };
 
   return (
@@ -50,112 +112,219 @@ export default function HomePage() {
       <Navbar />
 
       {/* ─── Hero Section ─── */}
-      <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
-        {/* Background gradient orbs */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-1/4 -left-1/4 w-[600px] h-[600px] rounded-full bg-[hsl(174,72%,46%)] opacity-[0.07] blur-[120px] animate-float" />
-          <div className="absolute bottom-1/4 -right-1/4 w-[500px] h-[500px] rounded-full bg-[hsl(253,63%,58%)] opacity-[0.07] blur-[120px] animate-float" style={{ animationDelay: "3s" }} />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full bg-[hsl(var(--primary))] opacity-[0.03] blur-[100px]" />
-        </div>
-
-        {/* Grid pattern */}
-        <div className="absolute inset-0 bg-[linear-gradient(hsl(var(--foreground)/0.03)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--foreground)/0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
-
-        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
+      <section
+        ref={heroRef}
+        className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16"
+      >
+        {/* Parallax Hero Background */}
+        <motion.div
+          style={{ y: heroY }}
+          className="absolute inset-0 pointer-events-none will-change-transform"
+        >
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
+            initial={{ opacity: 0, scale: 1.05 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 1.8, ease: "easeOut" }}
+            className="absolute inset-0"
+          >
+            <div
+              className="absolute inset-0 bg-cover bg-center"
+              style={{ backgroundImage: "url('/hero-suite.png')" }}
+            />
+            {/* Premium dark navy gradient overlay — left heavy, right transparent */}
+            <div className="absolute inset-0 bg-gradient-to-r from-[#0a1628]/[0.82] via-[#0d1f3c]/[0.55] to-[#0a1628]/[0.25]" />
+            {/* Bottom gradient fade for smooth section transition (pushed to very bottom to preserve text readability) */}
+            <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_0%,transparent_85%,hsl(var(--background))_100%)]" />
+          </motion.div>
+        </motion.div>
+
+        {/* Grid pattern — reduced opacity */}
+        <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(hsl(var(--foreground)/0.04)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--foreground)/0.04)_1px,transparent_1px)] bg-[size:60px_60px]" />
+
+        <motion.div
+          style={{ opacity: heroOpacity }}
+          className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col items-start text-left w-full justify-center"
+        >
+          <motion.div
+            variants={staggerContainer}
+            initial="hidden"
+            animate="visible"
+            className="max-w-3xl pt-12"
           >
             {/* Badge */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.2 }}
-              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--secondary))] text-sm font-medium mb-8"
-            >
-              <Sparkles className="h-4 w-4 text-[hsl(var(--primary))]" />
-              AI-Powered Pricing Engine
-              <ChevronRight className="h-3 w-3" />
+            <motion.div variants={fadeUp}>
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/15 bg-white/[0.06] backdrop-blur-xl text-white text-sm font-medium mb-8 shadow-[0_0_20px_-4px_rgba(20,184,166,0.15)]">
+                <Sparkles className="h-4 w-4 text-teal-400" />
+                <span className="text-white/90">AI-Powered Pricing Engine</span>
+                <ChevronRight className="h-3 w-3 text-white/50" />
+              </div>
             </motion.div>
 
             {/* Headline */}
-            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.1] mb-6">
-              Book Spaces
-              <br />
-              <span className="gradient-text">By the Hour</span>
-            </h1>
-
-            <p className="mx-auto max-w-2xl text-lg sm:text-xl text-[hsl(var(--muted-foreground))] mb-10 leading-relaxed">
-              Hotels, workspaces, rest pods, and lounges — book from 1 hour.
-              AI-optimized pricing. Real-time availability. Instant confirmation.
-            </p>
-
-            {/* Search Bar */}
-            <motion.form
-              onSubmit={handleSearch}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              className="mx-auto max-w-2xl"
+            <motion.h1
+              variants={fadeUp}
+              className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.08] mb-6 text-white"
             >
-              <div className="relative group">
-                <div className="absolute -inset-0.5 bg-gradient-to-r from-[hsl(174,72%,46%)] to-[hsl(253,63%,58%)] rounded-2xl opacity-20 group-hover:opacity-40 blur transition-opacity" />
-                <div className="relative flex items-center bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-2xl p-2">
-                  <Search className="ml-3 h-5 w-5 text-[hsl(var(--muted-foreground))]" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search hotels, coworking, pods near you..."
-                    className="flex-1 bg-transparent px-4 py-3 text-base outline-none placeholder:text-[hsl(var(--muted-foreground)/0.6)]"
-                    id="hero-search"
-                  />
+              Luxury Spaces.
+              <br />
+              <span className="bg-gradient-to-r from-teal-400 via-teal-300 to-emerald-400 bg-clip-text text-transparent">
+                Flexible Hours.
+              </span>
+            </motion.h1>
+
+            <motion.p
+              variants={fadeUp}
+              className="text-lg sm:text-xl text-white/70 mb-10 leading-relaxed max-w-2xl"
+            >
+              Book premium hotel rooms, workspaces, lounges, and meeting rooms
+              exactly when you need them. Instant booking. Flexible durations.
+              Smart pricing.
+            </motion.p>
+
+            {/* ─── Structured Search Bar (Airbnb-style) ─── */}
+            <motion.form
+              variants={fadeUp}
+              onSubmit={handleSearch}
+              className="max-w-3xl w-full"
+            >
+              <div className="relative group mb-8" id="hero-search-container">
+                {/* Teal glow */}
+                <div className="absolute -inset-1 bg-gradient-to-r from-teal-500/20 via-emerald-500/10 to-teal-500/20 rounded-2xl opacity-0 group-hover:opacity-100 blur-xl transition-opacity duration-700" />
+                <div className="absolute -inset-0.5 bg-gradient-to-r from-teal-400/25 to-emerald-500/25 rounded-2xl opacity-0 group-hover:opacity-60 blur transition-opacity duration-500" />
+
+                <div className="relative flex flex-col sm:flex-row items-stretch bg-white/[0.07] backdrop-blur-xl border border-white/[0.12] shadow-[0_8px_40px_-8px_rgba(0,0,0,0.5)] rounded-2xl overflow-hidden">
+                  {/* Location */}
+                  <div className="flex-1 flex items-center gap-3 px-5 py-4 sm:border-r border-b sm:border-b-0 border-white/[0.08] group/field hover:bg-white/[0.04] transition-colors">
+                    <MapPin className="h-5 w-5 text-teal-400 shrink-0" />
+                    <input
+                      type="text"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      placeholder="Where to?"
+                      className="w-full bg-transparent text-sm text-white placeholder:text-white/40 outline-none"
+                      id="hero-search-location"
+                    />
+                  </div>
+
+                  {/* Space Type */}
+                  <div className="flex-1 flex items-center gap-3 px-5 py-4 sm:border-r border-b sm:border-b-0 border-white/[0.08] group/field hover:bg-white/[0.04] transition-colors">
+                    <Building2 className="h-5 w-5 text-teal-400 shrink-0" />
+                    <select
+                      value={spaceType}
+                      onChange={(e) => setSpaceType(e.target.value)}
+                      className="w-full bg-transparent text-sm text-white outline-none appearance-none cursor-pointer [&>option]:bg-slate-900 [&>option]:text-white"
+                      id="hero-search-type"
+                    >
+                      {SPACE_TYPE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Duration */}
+                  <div className="flex-1 flex items-center gap-3 px-5 py-4 sm:border-r border-b sm:border-b-0 border-white/[0.08] group/field hover:bg-white/[0.04] transition-colors">
+                    <Clock className="h-5 w-5 text-teal-400 shrink-0" />
+                    <select
+                      value={duration}
+                      onChange={(e) => setDuration(e.target.value)}
+                      className="w-full bg-transparent text-sm text-white outline-none appearance-none cursor-pointer [&>option]:bg-slate-900 [&>option]:text-white"
+                      id="hero-search-duration"
+                    >
+                      {DURATION_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Search Button */}
                   <button
                     type="submit"
-                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-[hsl(174,72%,46%)] to-[hsl(253,63%,58%)] text-white font-semibold shadow-lg shadow-[hsl(174,72%,46%)]/20 hover:shadow-[hsl(174,72%,46%)]/40 transition-all hover:scale-105"
+                    className="flex items-center justify-center gap-2 px-7 py-4 bg-gradient-to-r from-teal-500 to-teal-400 text-white font-semibold text-sm shadow-[0_4px_20px_-4px_rgba(20,184,166,0.5)] hover:from-teal-400 hover:to-emerald-400 transition-all hover:shadow-[0_4px_28px_-4px_rgba(20,184,166,0.6)] active:scale-[0.98] shrink-0"
+                    id="hero-search-button"
                   >
-                    Search
+                    <Search className="h-4 w-4" />
+                    <span className="hidden sm:inline">Search</span>
                   </button>
                 </div>
               </div>
             </motion.form>
 
-            {/* Quick links */}
+            {/* ─── Trust Indicators ─── */}
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.6 }}
-              className="flex flex-wrap items-center justify-center gap-2 mt-6 text-sm"
+              variants={fadeUp}
+              className="flex flex-wrap items-center gap-x-6 gap-y-3 mb-10"
             >
-              <span className="text-[hsl(var(--muted-foreground))]">Popular:</span>
-              {["Mumbai Hotels", "Delhi Coworking", "Airport Lounges", "Nap Pods"].map((tag) => (
-                <Link
-                  key={tag}
-                  href={`/search?q=${encodeURIComponent(tag)}`}
-                  className="px-3 py-1 rounded-full border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--primary)/0.5)] transition-colors"
+              {TRUST_ITEMS.map((item) => (
+                <div
+                  key={item.label}
+                  className="flex items-center gap-2 text-white/60 text-sm"
                 >
-                  {tag}
-                </Link>
+                  <item.icon className="h-4 w-4 text-teal-400/80" />
+                  <span>{item.label}</span>
+                </div>
               ))}
+            </motion.div>
+
+            {/* CTA Buttons */}
+            <motion.div
+              variants={fadeUp}
+              className="flex flex-wrap items-center gap-4 text-sm"
+            >
+              <Link
+                href="/search"
+                className="group relative px-8 py-3.5 rounded-xl bg-gradient-to-r from-teal-500 to-teal-400 text-white font-semibold shadow-[0_4px_20px_-4px_rgba(20,184,166,0.4)] hover:shadow-[0_8px_30px_-4px_rgba(20,184,166,0.5)] transition-all duration-300 hover:-translate-y-0.5 flex items-center gap-2 overflow-hidden"
+                id="cta-explore"
+              >
+                <span className="relative z-10 flex items-center gap-2">
+                  Explore Spaces
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </span>
+                {/* Shimmer */}
+                <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+              </Link>
+              <Link
+                href="/how-it-works"
+                className="px-8 py-3.5 rounded-xl bg-white/[0.06] backdrop-blur-xl border border-white/[0.12] text-white font-semibold shadow-[0_4px_16px_0_rgba(0,0,0,0.2)] hover:bg-white/[0.12] hover:border-white/20 transition-all duration-300 hover:-translate-y-0.5"
+                id="cta-how-it-works"
+              >
+                How It Works
+              </Link>
             </motion.div>
           </motion.div>
 
-          {/* Stats */}
+          {/* ─── Stats with Dividers ─── */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.8 }}
-            className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-6"
+            transition={{ delay: 0.9, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            className="mt-16 flex flex-wrap items-center gap-0 text-left max-w-3xl w-full"
           >
             {STATS.map((stat, i) => (
-              <div key={stat.label} className="text-center">
-                <div className="text-2xl sm:text-3xl font-bold gradient-text">{stat.value}</div>
-                <div className="text-sm text-[hsl(var(--muted-foreground))] mt-1">{stat.label}</div>
+              <div key={stat.label} className="flex items-center">
+                <motion.div
+                  className="group px-6 first:pl-0 cursor-default"
+                  whileHover={{ scale: 1.05 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                >
+                  <div className="text-2xl sm:text-3xl font-bold text-white group-hover:text-teal-300 transition-colors duration-300">
+                    {stat.value}
+                  </div>
+                  <div className="text-sm text-white/50 mt-1 group-hover:text-white/70 transition-colors duration-300">
+                    {stat.label}
+                  </div>
+                </motion.div>
+                {/* Vertical divider — skip last */}
+                {i < STATS.length - 1 && (
+                  <div className="hidden md:block h-10 w-px bg-white/15" />
+                )}
               </div>
             ))}
           </motion.div>
-        </div>
+        </motion.div>
       </section>
 
       {/* ─── Space Types ─── */}

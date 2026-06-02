@@ -4,6 +4,8 @@ import { validate } from '../../core/middleware/validate';
 import { authenticate } from '../../core/middleware/auth';
 import { registerDto, loginDto, refreshTokenDto, otpRequestDto, otpVerifyDto } from './auth.dto';
 import { StatusCodes } from 'http-status-codes';
+import passport from '../../config/passport';
+import env from '../../config/environment';
 
 const router = Router();
 
@@ -90,5 +92,31 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
     res.status(StatusCodes.OK).json({ success: true, data: { user } });
   } catch (error) { next(error); }
 });
+
+// ─── Google OAuth Routes ───
+
+// GET /auth/google (Initiates Google OAuth)
+router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+
+// GET /auth/google/callback
+router.get('/google/callback', 
+  passport.authenticate('google', { session: false, failureRedirect: `${env.FRONTEND_URL}/login?error=auth_failed` }),
+  (req: Request, res: Response) => {
+    // The user is authenticated and tokens are attached to req.user via passport config
+    const result = req.user as any;
+    
+    // Set refresh token in cookie
+    res.cookie('refreshToken', result.refreshToken, {
+      httpOnly: true, 
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict', 
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    // Send access token back to frontend via query param (or render a script to pass it safely)
+    // Sending it in the URL fragment is safer for SPA redirects
+    res.redirect(`${env.FRONTEND_URL}/auth/callback?token=${result.accessToken}`);
+  }
+);
 
 export default router;

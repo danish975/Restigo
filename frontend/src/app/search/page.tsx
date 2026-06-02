@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Navbar } from "@/components/shared/navbar";
@@ -11,18 +12,47 @@ import { searchAPI } from "@/lib/api";
 import {
   Search, MapPin, Star, Clock, Filter, X, SlidersHorizontal,
   Wifi, Car, Wind, Coffee, ChevronDown, Grid3X3, Map as MapIcon, Loader2,
+  ArrowRight, CheckCircle, Building2, BedDouble, Laptop, Users,
 } from "lucide-react";
 
 const SPACE_FILTERS = [
-  { value: "", label: "All Spaces" },
-  { value: "hotel", label: "Hotels" },
-  { value: "coworking", label: "Coworking" },
-  { value: "nap_pod", label: "Rest Pods" },
-  { value: "lounge", label: "Lounges" },
-  { value: "capsule_hotel", label: "Capsule" },
-  { value: "meeting_room", label: "Meeting" },
-  { value: "transit_room", label: "Transit" },
+  { value: "", label: "All Spaces", icon: "🏢" },
+  { value: "hotel", label: "Hotels", icon: "🏨" },
+  { value: "coworking", label: "Coworking", icon: "💻" },
+  { value: "nap_pod", label: "Rest Pods", icon: "😴" },
+  { value: "lounge", label: "Lounges", icon: "🛋️" },
+  { value: "capsule_hotel", label: "Capsule", icon: "🛏️" },
+  { value: "meeting_room", label: "Meeting", icon: "📋" },
+  { value: "transit_room", label: "Transit", icon: "✈️" },
 ];
+
+const SORT_OPTIONS = [
+  { value: "rating", label: "Top Rated" },
+  { value: "price_low", label: "Price: Low → High" },
+  { value: "price_high", label: "Price: High → Low" },
+  { value: "distance", label: "Nearest" },
+];
+
+const AMENITY_ICONS: Record<string, string> = {
+  wifi: "📶", parking: "🅿️", ac: "❄️", tv: "📺", minibar: "🍷",
+  safe: "🔒", room_service: "🛎️", shower: "🚿", coffee_machine: "☕",
+  power_outlets: "🔌", locker: "🔐", quiet_zone: "🤫", gym: "💪",
+  pool: "🏊", spa: "💆", restaurant: "🍽️", bar: "🍸", laundry: "👔",
+  conference_room: "🏛️", business_center: "💼", shuttle: "🚌",
+  printer: "🖨️", whiteboard: "📝", projector: "📽️", phone_booth: "📞",
+  kitchen: "🍳", pet_friendly: "🐾", wheelchair_accessible: "♿",
+  ev_charging: "⚡",
+};
+
+const CATEGORY_COLORS: Record<string, string> = {
+  hotel: "from-blue-500/90 to-indigo-600/90",
+  coworking: "from-emerald-500/90 to-teal-600/90",
+  nap_pod: "from-violet-500/90 to-purple-600/90",
+  lounge: "from-amber-500/90 to-orange-600/90",
+  meeting_room: "from-rose-500/90 to-pink-600/90",
+  capsule_hotel: "from-cyan-500/90 to-blue-600/90",
+  transit_room: "from-sky-500/90 to-indigo-600/90",
+};
 
 function SearchContent() {
   const searchParams = useSearchParams();
@@ -33,48 +63,55 @@ function SearchContent() {
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "map">("grid");
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [maxPrice, setMaxPrice] = useState("");
+  const [minRating, setMinRating] = useState("");
+  const [imgErrors, setImgErrors] = useState<Set<string>>(new Set());
 
   // Fetch from API
-  useEffect(() => {
-    const fetchProperties = async () => {
-      setLoading(true);
-      try {
-        const params: any = {};
-        if (query) params.location = query; // The backend uses location or text search
-        if (typeFilter) params.type = typeFilter;
-        
-        const { data } = await searchAPI.search(params);
-        if (data.success) {
-          setProperties(data.data.properties);
-        }
-      } catch (error) {
-        console.error("Failed to fetch properties:", error);
-      } finally {
-        setLoading(false);
+  const fetchProperties = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params: any = { page, limit: 18, sortBy };
+      if (query) params.q = query;
+      if (typeFilter) params.type = typeFilter;
+      if (maxPrice) params.maxPrice = maxPrice;
+      if (minRating) params.rating = minRating;
+
+      const { data } = await searchAPI.search(params);
+      if (data.success) {
+        setProperties(data.data.properties || []);
+        setTotalPages(data.data.pagination?.pages || 1);
+        setTotal(data.data.pagination?.total || 0);
       }
-    };
+    } catch (error) {
+      console.error("Failed to fetch properties:", error);
+      setProperties([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [query, typeFilter, sortBy, page, maxPrice, minRating]);
 
-    const debounce = setTimeout(() => {
-      fetchProperties();
-    }, 300);
+  useEffect(() => {
+    setPage(1);
+  }, [query, typeFilter, sortBy, maxPrice, minRating]);
 
+  useEffect(() => {
+    const debounce = setTimeout(() => fetchProperties(), 350);
     return () => clearTimeout(debounce);
-  }, [query, typeFilter]);
+  }, [fetchProperties]);
 
-  // Sort
-  const filtered = [...properties]
-    .sort((a, b) => {
-      if (sortBy === "price_low") return a.priceRange.min - b.priceRange.min;
-      if (sortBy === "price_high") return b.priceRange.max - a.priceRange.max;
-      if (sortBy === "rating") return b.rating.average - a.rating.average;
-      return (a.distance || 0) - (b.distance || 0);
-    });
+  const handleImageError = (id: string) => {
+    setImgErrors((prev) => new Set(prev).add(id));
+  };
 
   return (
     <div className="min-h-screen bg-[hsl(var(--background))]">
       <Navbar />
 
-      {/* Search Header */}
+      {/* ─── Search Header ─── */}
       <div className="pt-20 pb-6 px-4 sm:px-6 lg:px-8 border-b border-[hsl(var(--border))] bg-[hsl(var(--card))]">
         <div className="mx-auto max-w-7xl">
           {/* Search bar */}
@@ -93,12 +130,17 @@ function SearchContent() {
             <button
               onClick={() => setShowFilters(!showFilters)}
               className={`p-3 rounded-xl border transition-colors ${showFilters ? 'bg-[hsl(var(--primary))] text-white border-transparent' : 'border-[hsl(var(--border))] hover:bg-[hsl(var(--secondary))]'}`}
+              id="toggle-filters"
             >
               <SlidersHorizontal className="h-5 w-5" />
             </button>
             <div className="hidden sm:flex border border-[hsl(var(--border))] rounded-xl overflow-hidden">
-              <button onClick={() => setViewMode("grid")} className={`p-3 ${viewMode === "grid" ? "bg-[hsl(var(--secondary))]" : ""}`}><Grid3X3 className="h-5 w-5" /></button>
-              <button onClick={() => setViewMode("map")} className={`p-3 ${viewMode === "map" ? "bg-[hsl(var(--secondary))]" : ""}`}><MapIcon className="h-5 w-5" /></button>
+              <button onClick={() => setViewMode("grid")} className={`p-3 transition-colors ${viewMode === "grid" ? "bg-[hsl(var(--secondary))]" : "hover:bg-[hsl(var(--secondary)/0.5)]"}`} id="view-grid">
+                <Grid3X3 className="h-5 w-5" />
+              </button>
+              <button onClick={() => setViewMode("map")} className={`p-3 transition-colors ${viewMode === "map" ? "bg-[hsl(var(--secondary))]" : "hover:bg-[hsl(var(--secondary)/0.5)]"}`} id="view-map">
+                <MapIcon className="h-5 w-5" />
+              </button>
             </div>
           </div>
 
@@ -108,12 +150,14 @@ function SearchContent() {
               <button
                 key={f.value}
                 onClick={() => setTypeFilter(f.value)}
-                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
+                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all flex items-center gap-1.5 ${
                   typeFilter === f.value
                     ? "bg-gradient-to-r from-[hsl(174,72%,46%)] to-[hsl(253,63%,58%)] text-white shadow-lg"
                     : "bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] border border-[hsl(var(--border))]"
                 }`}
+                id={`filter-${f.value || "all"}`}
               >
+                <span className="text-xs">{f.icon}</span>
                 {f.label}
               </button>
             ))}
@@ -122,38 +166,44 @@ function SearchContent() {
           {/* Filters panel */}
           <AnimatePresence>
             {showFilters && (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
                 <div className="pt-4 mt-4 border-t border-[hsl(var(--border))] grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Sort By</label>
-                    <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="w-full py-2 px-3 rounded-lg bg-[hsl(var(--secondary))] border border-[hsl(var(--border))] text-sm outline-none">
-                      <option value="rating">Top Rated</option>
-                      <option value="price_low">Price: Low to High</option>
-                      <option value="price_high">Price: High to Low</option>
-                      <option value="distance">Nearest</option>
+                    <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="w-full py-2 px-3 rounded-lg bg-[hsl(var(--secondary))] border border-[hsl(var(--border))] text-sm outline-none" id="sort-select">
+                      {SORT_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
                     <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Max Price/hr</label>
-                    <input type="number" placeholder="₹2000" className="w-full py-2 px-3 rounded-lg bg-[hsl(var(--secondary))] border border-[hsl(var(--border))] text-sm outline-none" />
+                    <input
+                      type="number"
+                      value={maxPrice}
+                      onChange={(e) => setMaxPrice(e.target.value)}
+                      placeholder="₹2000"
+                      className="w-full py-2 px-3 rounded-lg bg-[hsl(var(--secondary))] border border-[hsl(var(--border))] text-sm outline-none"
+                      id="filter-max-price"
+                    />
                   </div>
                   <div>
                     <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Min Rating</label>
-                    <select className="w-full py-2 px-3 rounded-lg bg-[hsl(var(--secondary))] border border-[hsl(var(--border))] text-sm outline-none">
+                    <select value={minRating} onChange={(e) => setMinRating(e.target.value)} className="w-full py-2 px-3 rounded-lg bg-[hsl(var(--secondary))] border border-[hsl(var(--border))] text-sm outline-none" id="filter-min-rating">
                       <option value="">Any</option>
                       <option value="4.5">4.5+ ★</option>
                       <option value="4.0">4.0+ ★</option>
                       <option value="3.5">3.5+ ★</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Radius</label>
-                    <select className="w-full py-2 px-3 rounded-lg bg-[hsl(var(--secondary))] border border-[hsl(var(--border))] text-sm outline-none">
-                      <option value="5">5 km</option>
-                      <option value="10">10 km</option>
-                      <option value="25">25 km</option>
-                      <option value="50">50 km</option>
-                    </select>
+                  <div className="flex items-end">
+                    <button
+                      onClick={() => { setMaxPrice(""); setMinRating(""); setQuery(""); setTypeFilter(""); }}
+                      className="w-full py-2 px-3 rounded-lg border border-[hsl(var(--border))] text-sm font-medium hover:bg-[hsl(var(--secondary))] transition-colors"
+                      id="clear-filters"
+                    >
+                      Clear All
+                    </button>
                   </div>
                 </div>
               </motion.div>
@@ -162,76 +212,129 @@ function SearchContent() {
         </div>
       </div>
 
-      {/* Results */}
+      {/* ─── Results ─── */}
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-6">
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            <span className="font-semibold text-[hsl(var(--foreground))]">{filtered.length}</span> spaces found
+            <span className="font-semibold text-[hsl(var(--foreground))]">{total}</span> spaces found
             {query && <> for &quot;<span className="font-medium text-[hsl(var(--foreground))]">{query}</span>&quot;</>}
+            {typeFilter && <> in <span className="font-medium text-[hsl(var(--foreground))]">{SPACE_FILTERS.find(f => f.value === typeFilter)?.label}</span></>}
           </p>
+          {totalPages > 1 && (
+            <p className="text-xs text-[hsl(var(--muted-foreground))]">
+              Page {page} of {totalPages}
+            </p>
+          )}
         </div>
 
         {loading ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[...Array(6)].map((_, i) => (
               <div key={i} className="rounded-2xl border border-[hsl(var(--border))] overflow-hidden">
-                <div className="h-48 skeleton" />
+                <div className="h-52 skeleton" />
                 <div className="p-5 space-y-3">
                   <div className="h-5 w-3/4 skeleton rounded" />
                   <div className="h-4 w-1/2 skeleton rounded" />
                   <div className="h-4 w-2/3 skeleton rounded" />
+                  <div className="flex gap-2 mt-2">
+                    <div className="h-6 w-14 skeleton rounded-md" />
+                    <div className="h-6 w-14 skeleton rounded-md" />
+                    <div className="h-6 w-14 skeleton rounded-md" />
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <AnimatePresence>
-              {filtered.map((property, i) => (
+            <AnimatePresence mode="popLayout">
+              {properties.map((property, i) => (
                 <motion.div
                   key={property._id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ delay: i * 0.05 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ delay: Math.min(i * 0.04, 0.4), duration: 0.4 }}
+                  layout
                 >
-                  <Link href={`/property/${property.slug}`} className="group block">
-                    <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] overflow-hidden transition-all hover:border-[hsl(var(--primary)/0.4)] hover:shadow-xl hover:shadow-[hsl(var(--primary))/0.05] hover:-translate-y-1">
-                      {/* Image placeholder with gradient */}
-                      <div className="relative h-48 bg-gradient-to-br from-[hsl(var(--secondary))] to-[hsl(var(--muted))] flex items-center justify-center overflow-hidden">
-                        <div className="text-6xl opacity-30 group-hover:scale-110 transition-transform duration-500">
-                          {getPropertyTypeIcon(property.type)}
+                  <Link href={`/property/${property.slug}`} className="group block" id={`property-${property._id}`}>
+                    <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] overflow-hidden transition-all duration-300 hover:border-[hsl(var(--primary)/0.4)] hover:shadow-xl hover:shadow-[hsl(var(--primary))/0.08] hover:-translate-y-1">
+                      {/* ─── Hero Image ─── */}
+                      <div className="relative h-52 bg-gradient-to-br from-[hsl(var(--secondary))] to-[hsl(var(--muted))] overflow-hidden">
+                        {property.images?.[0] && !imgErrors.has(property._id) ? (
+                          <img
+                            src={property.images[0]}
+                            alt={property.name}
+                            className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                            loading="lazy"
+                            onError={() => handleImageError(property._id)}
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-6xl opacity-30 group-hover:scale-110 transition-transform duration-500">
+                              {getPropertyTypeIcon(property.type)}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Gradient overlay for text readability */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+
+                        {/* Category badge */}
+                        <div className={`absolute top-3 left-3 px-3 py-1 rounded-full bg-gradient-to-r ${CATEGORY_COLORS[property.type] || "from-gray-500/90 to-gray-600/90"} text-white text-xs font-semibold backdrop-blur-sm shadow-sm`}>
+                          {getPropertyTypeLabel(property.type)}
                         </div>
+
+                        {/* Featured badge */}
                         {property.featured && (
-                          <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs font-semibold">
+                          <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 text-white text-xs font-semibold shadow-sm flex items-center gap-1">
+                            <Star className="h-3 w-3 fill-current" />
                             Featured
                           </div>
                         )}
-                        <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full glass text-xs font-medium">
-                          {getPropertyTypeLabel(property.type)}
+
+                        {/* Price tag */}
+                        <div className="absolute bottom-3 right-3 px-3 py-1.5 rounded-xl bg-[hsl(var(--background)/0.9)] backdrop-blur-sm text-sm font-bold shadow-lg">
+                          {formatPrice(property.priceRange?.min || 0)}
+                          <span className="text-xs font-normal text-[hsl(var(--muted-foreground))]">/hr</span>
                         </div>
-                        <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-[hsl(var(--background))] text-xs font-semibold">
-                          from {formatPrice(property.priceRange.min)}<span className="text-[hsl(var(--muted-foreground))] font-normal">/hr</span>
+
+                        {/* Availability indicator */}
+                        <div className="absolute bottom-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/90 text-white text-xs font-medium backdrop-blur-sm">
+                          <div className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                          Available
                         </div>
                       </div>
 
+                      {/* ─── Card Body ─── */}
                       <div className="p-5">
-                        <h3 className="font-semibold text-base mb-1 group-hover:text-[hsl(var(--primary))] transition-colors line-clamp-1">
+                        {/* Name */}
+                        <h3 className="font-semibold text-base mb-1.5 group-hover:text-[hsl(var(--primary))] transition-colors line-clamp-1">
                           {property.name}
                         </h3>
 
-                        <div className="flex items-center gap-1 text-sm text-[hsl(var(--muted-foreground))] mb-3">
-                          <MapPin className="h-3.5 w-3.5" />
-                          <span className="line-clamp-1">{property.location.address}, {property.location.city}</span>
+                        {/* Location */}
+                        <div className="flex items-center gap-1.5 text-sm text-[hsl(var(--muted-foreground))] mb-3">
+                          <MapPin className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" />
+                          <span className="line-clamp-1">
+                            {property.location?.city || "Unknown"}{property.location?.country ? `, ${property.location.country}` : ""}
+                          </span>
                         </div>
 
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1">
-                            <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                            <span className="font-semibold text-sm">{property.rating.average.toFixed(1)}</span>
-                            <span className="text-xs text-[hsl(var(--muted-foreground))]">({property.rating.count})</span>
+                        {/* Rating + Reviews */}
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-amber-500/10">
+                              <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                              <span className="font-semibold text-sm text-amber-600 dark:text-amber-400">
+                                {(property.rating?.average || 0).toFixed(1)}
+                              </span>
+                            </div>
+                            <span className="text-xs text-[hsl(var(--muted-foreground))]">
+                              ({property.rating?.count || 0} reviews)
+                            </span>
                           </div>
-                          {property.distance && (
+                          {property.distance != null && (
                             <span className="text-xs text-[hsl(var(--muted-foreground))] flex items-center gap-1">
                               <MapPin className="h-3 w-3" />
                               {property.distance.toFixed(1)} km
@@ -240,18 +343,28 @@ function SearchContent() {
                         </div>
 
                         {/* Amenities */}
-                        <div className="flex gap-1.5 mt-3 flex-wrap">
-                          {property.amenities.slice(0, 4).map((a: string) => (
-                            <span key={a} className="px-2 py-0.5 rounded-md bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))] text-xs capitalize">
-                              {a.replace('_', ' ')}
+                        <div className="flex gap-1.5 mb-4 flex-wrap">
+                          {(property.amenities || []).slice(0, 4).map((a: string) => (
+                            <span
+                              key={a}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))] text-xs capitalize"
+                            >
+                              <span className="text-[10px]">{AMENITY_ICONS[a] || "•"}</span>
+                              {a.replace(/_/g, " ")}
                             </span>
                           ))}
-                          {property.amenities.length > 4 && (
-                            <span className="px-2 py-0.5 rounded-md bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))] text-xs">
-                              +{property.amenities.length - 4}
+                          {(property.amenities?.length || 0) > 4 && (
+                            <span className="px-2 py-0.5 rounded-md bg-[hsl(var(--secondary))] text-[hsl(var(--primary))] text-xs font-medium">
+                              +{property.amenities.length - 4} more
                             </span>
                           )}
                         </div>
+
+                        {/* Book Now CTA */}
+                        <button className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[hsl(174,72%,46%)] to-[hsl(174,72%,40%)] text-white text-sm font-semibold shadow-md shadow-[hsl(174,72%,46%)]/15 hover:shadow-lg hover:shadow-[hsl(174,72%,46%)]/25 transition-all duration-300 flex items-center justify-center gap-2 group-hover:from-[hsl(174,72%,50%)] group-hover:to-[hsl(174,72%,44%)]">
+                          Book Now
+                          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                        </button>
                       </div>
                     </div>
                   </Link>
@@ -261,11 +374,71 @@ function SearchContent() {
           </div>
         )}
 
-        {filtered.length === 0 && !loading && (
+        {/* ─── Empty State ─── */}
+        {properties.length === 0 && !loading && (
           <div className="text-center py-20">
-            <Search className="h-12 w-12 text-[hsl(var(--muted-foreground))] mx-auto mb-4 opacity-30" />
+            <div className="inline-flex p-4 rounded-full bg-[hsl(var(--secondary))] mb-4">
+              <Search className="h-8 w-8 text-[hsl(var(--muted-foreground))] opacity-50" />
+            </div>
             <h3 className="text-lg font-semibold mb-2">No spaces found</h3>
-            <p className="text-[hsl(var(--muted-foreground))] text-sm">Try adjusting your search or filters.</p>
+            <p className="text-[hsl(var(--muted-foreground))] text-sm mb-6">Try adjusting your search or filters to find what you&apos;re looking for.</p>
+            <button
+              onClick={() => { setQuery(""); setTypeFilter(""); setMaxPrice(""); setMinRating(""); }}
+              className="px-6 py-2.5 rounded-xl bg-[hsl(var(--primary))] text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+              id="clear-search"
+            >
+              Clear Search
+            </button>
+          </div>
+        )}
+
+        {/* ─── Pagination ─── */}
+        {totalPages > 1 && !loading && (
+          <div className="flex items-center justify-center gap-2 mt-10">
+            <button
+              onClick={() => setPage(Math.max(1, page - 1))}
+              disabled={page === 1}
+              className="px-4 py-2 rounded-xl border border-[hsl(var(--border))] text-sm font-medium hover:bg-[hsl(var(--secondary))] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              id="page-prev"
+            >
+              Previous
+            </button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                let pageNum: number;
+                if (totalPages <= 7) {
+                  pageNum = i + 1;
+                } else if (page <= 4) {
+                  pageNum = i + 1;
+                } else if (page >= totalPages - 3) {
+                  pageNum = totalPages - 6 + i;
+                } else {
+                  pageNum = page - 3 + i;
+                }
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setPage(pageNum)}
+                    className={`h-9 w-9 rounded-lg text-sm font-medium transition-all ${
+                      page === pageNum
+                        ? "bg-gradient-to-r from-[hsl(174,72%,46%)] to-[hsl(253,63%,58%)] text-white shadow-lg"
+                        : "hover:bg-[hsl(var(--secondary))]"
+                    }`}
+                    id={`page-${pageNum}`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => setPage(Math.min(totalPages, page + 1))}
+              disabled={page === totalPages}
+              className="px-4 py-2 rounded-xl border border-[hsl(var(--border))] text-sm font-medium hover:bg-[hsl(var(--secondary))] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              id="page-next"
+            >
+              Next
+            </button>
           </div>
         )}
       </div>
@@ -277,7 +450,14 @@ function SearchContent() {
 
 export default function SearchPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-[hsl(var(--primary))]" /></div>}>
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-[hsl(var(--background))]">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-[hsl(var(--primary))]" />
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">Loading spaces...</p>
+        </div>
+      </div>
+    }>
       <SearchContent />
     </Suspense>
   );
