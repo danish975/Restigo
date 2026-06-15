@@ -11,6 +11,7 @@ const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const express_mongo_sanitize_1 = __importDefault(require("express-mongo-sanitize"));
 const hpp_1 = __importDefault(require("hpp"));
+const passport_1 = __importDefault(require("passport"));
 const errorHandler_1 = require("./core/middleware/errorHandler");
 const environment_1 = __importDefault(require("./config/environment"));
 // Import routes
@@ -56,6 +57,8 @@ app.use((0, cookie_parser_1.default)());
 app.use((0, express_mongo_sanitize_1.default)());
 app.use((0, hpp_1.default)());
 app.use((0, compression_1.default)());
+// Initialize Passport
+app.use(passport_1.default.initialize());
 // ─── Health Check ───
 app.get('/health', (_req, res) => {
     res.status(200).json({

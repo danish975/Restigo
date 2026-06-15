@@ -8,13 +8,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "@/stores/auth-store";
 import {
   Clock, Search, Menu, X, Moon, Sun, User, LogOut, LayoutDashboard, Building2,
+  ChevronDown,
 } from "lucide-react";
 
 const NAV_LINKS = [
-  { href: "/search", label: "Explore" },
-  { href: "/search?type=hotel", label: "Hotels" },
-  { href: "/search?type=coworking", label: "Workspaces" },
-  { href: "/search?type=nap_pod", label: "Rest Pods" },
+  { href: "/search", label: "Explore", isAnchor: false },
+  { href: "/search?type=hotel", label: "Hotels", isAnchor: false },
+  { href: "/search?type=coworking", label: "Workspaces", isAnchor: false },
+  { href: "/search?type=nap_pod", label: "Rest Pods", isAnchor: false },
+  { href: "#how-it-works", label: "How It Works", isAnchor: true },
+  { href: "#host-marketplace", label: "For Hosts", isAnchor: true },
 ];
 
 export function Navbar() {
@@ -33,13 +36,36 @@ export function Navbar() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  // Lock body scroll when mobile menu is open
+  useEffect(() => {
+    if (mobileOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [mobileOpen]);
+
   const isActive = (href: string) => {
+    if (href.startsWith("#")) return false;
     if (href === "/search" && pathname === "/search") return true;
     if (href.includes("?") && pathname === "/search") {
       const type = new URL(href, "http://x").searchParams.get("type");
       return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("type") === type;
     }
     return false;
+  };
+
+  const handleNavClick = (href: string, isAnchor: boolean) => {
+    if (isAnchor && pathname === "/") {
+      setMobileOpen(false);
+      const el = document.querySelector(href);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    } else {
+      setMobileOpen(false);
+    }
   };
 
   return (
@@ -49,7 +75,7 @@ export function Navbar() {
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
         scrolled
-          ? "bg-[hsl(var(--card)/0.65)] backdrop-blur-2xl border-b border-[hsl(var(--border)/0.4)] shadow-[0_4px_30px_-4px_rgba(0,0,0,0.15)]"
+          ? "bg-[hsl(var(--card)/0.55)] backdrop-blur-3xl border-b border-[hsl(var(--border)/0.3)] shadow-[0_4px_30px_-4px_rgba(0,0,0,0.2)]"
           : "bg-transparent"
       }`}
     >
@@ -57,23 +83,25 @@ export function Navbar() {
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[hsl(174,72%,46%)] to-[hsl(253,63%,58%)] shadow-lg shadow-[hsl(174,72%,46%)]/20 transition-all duration-300 group-hover:scale-110 group-hover:shadow-[hsl(174,72%,46%)]/30">
+            <div className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#22D3EE] to-[#8B5CF6] shadow-lg shadow-[#22D3EE]/20 transition-all duration-300 group-hover:scale-110 group-hover:shadow-[#22D3EE]/30">
               <Clock className="h-5 w-5 text-white" />
             </div>
             <span className="text-xl font-bold tracking-tight">
-              REST<span className="gradient-text">IGO</span>
+              REST<span className="gradient-text-brand">IGO</span>
             </span>
           </Link>
 
           {/* Desktop Nav */}
-          <div className="hidden md:flex items-center gap-0.5">
+          <div className="hidden lg:flex items-center gap-0.5">
             {NAV_LINKS.map((item) => {
               const active = isActive(item.href);
+              const LinkOrAnchor = item.isAnchor ? 'a' : Link;
               return (
-                <Link
+                <LinkOrAnchor
                   key={item.href + item.label}
                   href={item.href}
-                  className={`relative px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
+                  onClick={() => handleNavClick(item.href, item.isAnchor)}
+                  className={`relative px-3.5 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
                     active
                       ? "text-[hsl(var(--foreground))]"
                       : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
@@ -84,11 +112,11 @@ export function Navbar() {
                   {active && (
                     <motion.div
                       layoutId="nav-active-indicator"
-                      className="absolute bottom-0 left-2 right-2 h-0.5 bg-gradient-to-r from-teal-400 to-emerald-400 rounded-full"
+                      className="absolute bottom-0 left-2 right-2 h-0.5 bg-gradient-to-r from-[#22D3EE] to-[#8B5CF6] rounded-full"
                       transition={{ type: "spring", stiffness: 380, damping: 30 }}
                     />
                   )}
-                </Link>
+                </LinkOrAnchor>
               );
             })}
           </div>
@@ -113,7 +141,7 @@ export function Navbar() {
             )}
 
             {isAuthenticated ? (
-              <div className="hidden md:flex items-center gap-1">
+              <div className="hidden lg:flex items-center gap-1">
                 <Link
                   href={user?.role === 'provider' ? '/dashboard/provider' : user?.role === 'admin' ? '/dashboard/admin' : '/dashboard/user'}
                   className="flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg hover:bg-[hsl(var(--secondary)/0.6)] transition-all duration-200"
@@ -129,7 +157,7 @@ export function Navbar() {
                 </button>
               </div>
             ) : (
-              <div className="hidden md:flex items-center gap-2">
+              <div className="hidden lg:flex items-center gap-2">
                 <Link
                   href="/login"
                   className="px-4 py-2 text-sm font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-all duration-200"
@@ -138,7 +166,7 @@ export function Navbar() {
                 </Link>
                 <Link
                   href="/register"
-                  className="relative group px-5 py-2 text-sm font-semibold rounded-xl bg-gradient-to-r from-[hsl(174,72%,46%)] to-[hsl(253,63%,58%)] text-white shadow-lg shadow-[hsl(174,72%,46%)]/20 hover:shadow-[hsl(174,72%,46%)]/40 transition-all duration-300 hover:scale-105 overflow-hidden"
+                  className="relative group px-5 py-2.5 text-sm font-semibold rounded-xl bg-gradient-to-r from-[#22D3EE] to-[#8B5CF6] text-white shadow-lg shadow-[#22D3EE]/20 hover:shadow-[#22D3EE]/40 transition-all duration-300 hover:scale-105 overflow-hidden"
                 >
                   <span className="relative z-10">Get Started</span>
                   <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/15 to-transparent" />
@@ -149,7 +177,8 @@ export function Navbar() {
             {/* Mobile menu button */}
             <button
               onClick={() => setMobileOpen(!mobileOpen)}
-              className="md:hidden p-2 rounded-lg hover:bg-[hsl(var(--secondary)/0.6)] transition-all duration-200"
+              className="lg:hidden p-2 rounded-lg hover:bg-[hsl(var(--secondary)/0.6)] transition-all duration-200"
+              aria-label="Toggle menu"
             >
               <motion.div
                 key={mobileOpen ? "close" : "open"}
@@ -172,35 +201,38 @@ export function Navbar() {
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            className="md:hidden bg-[hsl(var(--card)/0.8)] backdrop-blur-2xl border-t border-[hsl(var(--border)/0.4)]"
+            className="lg:hidden bg-[hsl(var(--card)/0.9)] backdrop-blur-3xl border-t border-[hsl(var(--border)/0.3)] max-h-[calc(100vh-4rem)] overflow-y-auto"
           >
             <div className="px-4 py-4 space-y-1">
-              {NAV_LINKS.map((item) => (
-                <Link
-                  key={item.href + item.label}
-                  href={item.href}
-                  className="block px-3 py-2.5 text-sm font-medium rounded-lg hover:bg-[hsl(var(--secondary)/0.6)] transition-all duration-200"
-                  onClick={() => setMobileOpen(false)}
-                >
-                  {item.label}
-                </Link>
-              ))}
-              <div className="border-t border-[hsl(var(--border)/0.4)] pt-2 mt-2">
+              {NAV_LINKS.map((item) => {
+                const LinkOrAnchor = item.isAnchor ? 'a' : Link;
+                return (
+                  <LinkOrAnchor
+                    key={item.href + item.label}
+                    href={item.href}
+                    className="block px-4 py-3 text-sm font-medium rounded-xl hover:bg-[hsl(var(--secondary)/0.6)] transition-all duration-200"
+                    onClick={() => handleNavClick(item.href, item.isAnchor)}
+                  >
+                    {item.label}
+                  </LinkOrAnchor>
+                );
+              })}
+              <div className="border-t border-[hsl(var(--border)/0.3)] pt-3 mt-3">
                 {isAuthenticated ? (
                   <>
-                    <Link href="/dashboard/user" className="block px-3 py-2.5 text-sm rounded-lg hover:bg-[hsl(var(--secondary)/0.6)] transition-all duration-200" onClick={() => setMobileOpen(false)}>
+                    <Link href="/dashboard/user" className="block px-4 py-3 text-sm rounded-xl hover:bg-[hsl(var(--secondary)/0.6)] transition-all duration-200" onClick={() => setMobileOpen(false)}>
                       Dashboard
                     </Link>
-                    <button onClick={() => { logout(); setMobileOpen(false); }} className="block w-full text-left px-3 py-2.5 text-sm text-[hsl(var(--destructive))] rounded-lg hover:bg-[hsl(var(--secondary)/0.6)] transition-all duration-200">
+                    <button onClick={() => { logout(); setMobileOpen(false); }} className="block w-full text-left px-4 py-3 text-sm text-[hsl(var(--destructive))] rounded-xl hover:bg-[hsl(var(--secondary)/0.6)] transition-all duration-200">
                       Sign Out
                     </button>
                   </>
                 ) : (
                   <>
-                    <Link href="/login" className="block px-3 py-2.5 text-sm rounded-lg hover:bg-[hsl(var(--secondary)/0.6)] transition-all duration-200" onClick={() => setMobileOpen(false)}>
+                    <Link href="/login" className="block px-4 py-3 text-sm rounded-xl hover:bg-[hsl(var(--secondary)/0.6)] transition-all duration-200" onClick={() => setMobileOpen(false)}>
                       Sign In
                     </Link>
-                    <Link href="/register" className="block px-3 py-2.5 text-sm font-semibold text-center rounded-xl bg-gradient-to-r from-[hsl(174,72%,46%)] to-[hsl(253,63%,58%)] text-white mt-2" onClick={() => setMobileOpen(false)}>
+                    <Link href="/register" className="block px-4 py-3 text-sm font-semibold text-center rounded-xl bg-gradient-to-r from-[#22D3EE] to-[#8B5CF6] text-white mt-2" onClick={() => setMobileOpen(false)}>
                       Get Started
                     </Link>
                   </>

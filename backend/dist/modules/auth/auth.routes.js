@@ -1,4 +1,7 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const auth_service_1 = require("./auth.service");
@@ -6,6 +9,8 @@ const validate_1 = require("../../core/middleware/validate");
 const auth_1 = require("../../core/middleware/auth");
 const auth_dto_1 = require("./auth.dto");
 const http_status_codes_1 = require("http-status-codes");
+const passport_1 = __importDefault(require("../../config/passport"));
+const environment_1 = __importDefault(require("../../config/environment"));
 const router = (0, express_1.Router)();
 // POST /auth/register
 router.post('/register', (0, validate_1.validate)(auth_dto_1.registerDto), async (req, res, next) => {
@@ -104,6 +109,24 @@ router.get('/me', auth_1.authenticate, async (req, res, next) => {
     catch (error) {
         next(error);
     }
+});
+// ─── Google OAuth Routes ───
+// GET /auth/google (Initiates Google OAuth)
+router.get('/google', passport_1.default.authenticate('google', { scope: ['profile', 'email'] }));
+// GET /auth/google/callback
+router.get('/google/callback', passport_1.default.authenticate('google', { session: false, failureRedirect: `${environment_1.default.FRONTEND_URL}/login?error=auth_failed` }), (req, res) => {
+    // The user is authenticated and tokens are attached to req.user via passport config
+    const result = req.user;
+    // Set refresh token in cookie
+    res.cookie('refreshToken', result.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    // Send access token back to frontend via query param (or render a script to pass it safely)
+    // Sending it in the URL fragment is safer for SPA redirects
+    res.redirect(`${environment_1.default.FRONTEND_URL}/auth/callback?token=${result.accessToken}`);
 });
 exports.default = router;
 //# sourceMappingURL=auth.routes.js.map

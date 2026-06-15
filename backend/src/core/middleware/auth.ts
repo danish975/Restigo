@@ -9,13 +9,6 @@ export interface AuthPayload {
   role: 'user' | 'provider' | 'admin';
 }
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: AuthPayload;
-    }
-  }
-}
 
 /**
  * Middleware: Requires a valid JWT access token.
