@@ -1,76 +1,218 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { use } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Navbar } from "@/components/shared/navbar";
 import { Footer } from "@/components/shared/footer";
 import { formatPrice, getPropertyTypeLabel, getPropertyTypeIcon } from "@/lib/utils";
+import { propertyAPI, searchAPI, bookingAPI } from "@/lib/api";
+import { useBookingStore } from "@/stores/booking-store";
 import {
-  Star, MapPin, Clock, Shield, Wifi, Car, Wind, Coffee, Users, ChevronRight,
-  Calendar, Timer, Check, ArrowRight, Zap, Phone, Mail, Globe, Loader2,
+  Star, MapPin, Clock, Shield, Check, ChevronRight,
+  Timer, Zap, Loader2, AlertCircle,
+  Phone, Mail, Globe, CreditCard,
 } from "lucide-react";
 
-// Demo property for SSR/initial display
-const DEMO_PROPERTY = {
-  _id: "1", name: "FlexStay Business Suites", slug: "flexstay-business-suites",
-  type: "hotel", description: "Premium business hotel offering flexible hourly bookings in the heart of Bangalore's CBD. Modern rooms with high-speed WiFi, ergonomic workspace, and premium amenities. Perfect for business travelers, digital nomads, and anyone needing a private space for a few hours. 24/7 front desk, room service, and contactless check-in available.",
-  images: [],
-  location: { type: "Point", coordinates: [77.5946, 12.9716], address: "42 MG Road, CBD", city: "Bangalore", state: "Karnataka", country: "India", zipCode: "560001" },
-  amenities: ["wifi", "ac", "tv", "minibar", "room_service", "parking", "gym", "safe", "power_outlets", "coffee_machine"],
-  policies: { cancellationPolicy: "moderate", minBookingHours: 1, maxBookingHours: 12, allowPets: false, smokingAllowed: false },
-  contact: { phone: "+91 9000000004", email: "info@flexstay.com", website: "https://flexstay.com" },
-  rating: { average: 4.7, count: 342 },
-  priceRange: { min: 599, max: 1799, currency: "INR" },
-  operatingHours: { open: "00:00", close: "23:59", is24Hours: true, closedDays: [] },
-  totalRooms: 12,
-};
+interface SlotData {
+  _id: string;
+  roomId: string;
+  startTime: string;
+  endTime: string;
+  status: string;
+  basePrice: number;
+  dynamicPrice?: number;
+  date: string;
+}
 
-const DEMO_ROOMS = [
-  { _id: "r1", name: "Standard Room", type: "standard", basePrice: 599, currency: "INR", capacity: { adults: 2 }, amenities: ["wifi", "ac", "tv"], size: { value: 250, unit: "sqft" } },
-  { _id: "r2", name: "Deluxe Room", type: "deluxe", basePrice: 899, currency: "INR", capacity: { adults: 2 }, amenities: ["wifi", "ac", "tv", "minibar"], size: { value: 350, unit: "sqft" } },
-  { _id: "r3", name: "Business Suite", type: "suite", basePrice: 1499, currency: "INR", capacity: { adults: 3 }, amenities: ["wifi", "ac", "tv", "minibar", "room_service", "safe"], size: { value: 500, unit: "sqft" } },
-];
+interface RoomData {
+  _id: string;
+  name: string;
+  type: string;
+  basePrice: number;
+  currency: string;
+  capacity: { adults: number };
+  amenities: string[];
+  size?: { value: number; unit: string };
+}
 
-const DEMO_SLOTS = [
-  { _id: "s1", roomId: "r1", startTime: "09:00", endTime: "10:00", status: "available", basePrice: 599 },
-  { _id: "s2", roomId: "r1", startTime: "10:00", endTime: "11:00", status: "available", basePrice: 599 },
-  { _id: "s3", roomId: "r1", startTime: "11:00", endTime: "12:00", status: "held", basePrice: 649 },
-  { _id: "s4", roomId: "r1", startTime: "12:00", endTime: "13:00", status: "available", basePrice: 699 },
-  { _id: "s5", roomId: "r1", startTime: "13:00", endTime: "14:00", status: "available", basePrice: 649 },
-  { _id: "s6", roomId: "r1", startTime: "14:00", endTime: "15:00", status: "booked", basePrice: 699 },
-  { _id: "s7", roomId: "r1", startTime: "15:00", endTime: "16:00", status: "available", basePrice: 599 },
-  { _id: "s8", roomId: "r1", startTime: "16:00", endTime: "17:00", status: "available", basePrice: 649 },
-  { _id: "s9", roomId: "r1", startTime: "17:00", endTime: "18:00", status: "available", basePrice: 749 },
-];
+interface PropertyData {
+  _id: string;
+  name: string;
+  slug: string;
+  type: string;
+  description: string;
+  images: string[];
+  location: any;
+  amenities: string[];
+  policies: any;
+  contact: any;
+  rating: { average: number; count: number };
+  priceRange: { min: number; max: number; currency: string };
+  operatingHours: any;
+  totalRooms?: number;
+}
 
 const REVIEWS = [
   { user: "Arjun M.", rating: 5, comment: "Fantastic hourly booking experience! The room was clean and check-in was seamless. Will definitely use RESTIGO again.", date: "2 days ago" },
-  { user: "Priya S.", rating: 4, comment: "Great location near MG Road metro. Perfect for a quick rest between meetings. WiFi was fast.", date: "1 week ago" },
-  { user: "Rahul K.", rating: 5, comment: "Best value for an hourly hotel stay in Bangalore. The business suite was spacious and well-equipped.", date: "2 weeks ago" },
+  { user: "Priya S.", rating: 4, comment: "Great location. Perfect for a quick rest between meetings. WiFi was fast.", date: "1 week ago" },
+  { user: "Rahul K.", rating: 5, comment: "Best value for an hourly stay. The suite was spacious and well-equipped.", date: "2 weeks ago" },
 ];
 
 export default function PropertyDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
-  const property = DEMO_PROPERTY;
-  const rooms = DEMO_ROOMS;
+  const router = useRouter();
+  const { setHoldData } = useBookingStore();
 
-  const [selectedRoom, setSelectedRoom] = useState(rooms[0]);
+  const [property, setProperty] = useState<PropertyData | null>(null);
+  const [rooms, setRooms] = useState<RoomData[]>([]);
+  const [slots, setSlots] = useState<SlotData[]>([]);
+  const [selectedRoom, setSelectedRoom] = useState<RoomData | null>(null);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [bookingLoading, setBookingLoading] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [imgError, setImgError] = useState(false);
+
+  // Fetch property and rooms
+  useEffect(() => {
+    const fetchProperty = async () => {
+      setLoading(true);
+      try {
+        const { data } = await propertyAPI.getBySlug(slug);
+        if (data.success) {
+          setProperty(data.data.property);
+          setRooms(data.data.rooms || []);
+          if (data.data.rooms?.length > 0) {
+            setSelectedRoom(data.data.rooms[0]);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch property:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProperty();
+  }, [slug]);
+
+  // Fetch slots when room changes
+  useEffect(() => {
+    if (!property || !selectedRoom) return;
+
+    const fetchSlots = async () => {
+      setSlotsLoading(true);
+      setSelectedSlots([]);
+      try {
+        const today = new Date().toISOString().split("T")[0];
+        const { data } = await searchAPI.searchSlots({
+          propertyId: property._id,
+          roomId: selectedRoom._id,
+          date: today,
+        });
+        if (data.success) {
+          setSlots(data.data.slots || []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch slots:", error);
+        setSlots([]);
+      } finally {
+        setSlotsLoading(false);
+      }
+    };
+    fetchSlots();
+  }, [property, selectedRoom]);
 
   const toggleSlot = (slotId: string, status: string) => {
     if (status !== "available") return;
     setSelectedSlots((prev) =>
       prev.includes(slotId) ? prev.filter((id) => id !== slotId) : [...prev, slotId]
     );
+    setBookingError(null);
   };
 
   const selectedTotal = selectedSlots.reduce((sum, id) => {
-    const slot = DEMO_SLOTS.find((s) => s._id === id);
-    return sum + (slot?.basePrice || 0);
+    const slot = slots.find((s) => s._id === id);
+    return sum + (slot?.dynamicPrice || slot?.basePrice || 0);
   }, 0);
+
+  const handleReserve = async () => {
+    if (selectedSlots.length === 0) return;
+
+    // Check if user is logged in
+    const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+    if (!token) {
+      router.push('/login?redirect=' + encodeURIComponent(`/property/${slug}`));
+      return;
+    }
+
+    setBookingLoading(true);
+    setBookingError(null);
+
+    try {
+      const { data } = await bookingAPI.createHold({
+        slotIds: selectedSlots,
+        guests: { adults: 1, children: 0 },
+      });
+
+      if (data.success) {
+        setHoldData(data.data);
+        router.push(`/booking/${data.data.booking._id}`);
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.error?.message || "Failed to create booking hold. Please try again.";
+      setBookingError(msg);
+    } finally {
+      setBookingLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[hsl(var(--background))]">
+        <Navbar />
+        <div className="pt-20 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+          <div className="animate-pulse space-y-6">
+            <div className="h-72 rounded-2xl skeleton" />
+            <div className="h-8 w-1/2 skeleton rounded" />
+            <div className="h-4 w-3/4 skeleton rounded" />
+            <div className="grid grid-cols-3 gap-3">
+              {[1, 2, 3].map(i => <div key={i} className="h-24 skeleton rounded-xl" />)}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!property) {
+    return (
+      <div className="min-h-screen bg-[hsl(var(--background))]">
+        <Navbar />
+        <div className="pt-20 flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <AlertCircle className="mx-auto h-12 w-12 text-[hsl(var(--muted-foreground))] mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Property not found</h2>
+            <p className="text-[hsl(var(--muted-foreground))] mb-4">The property you're looking for doesn't exist or has been removed.</p>
+            <Link href="/search" className="px-6 py-2 rounded-xl bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] font-medium">
+              Back to Search
+            </Link>
+          </div>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
+  const locationAddress = typeof property.location?.address === 'string'
+    ? property.location.address
+    : property.location?.address?.street || '';
+  const locationCity = typeof property.location?.address === 'string'
+    ? property.location?.city
+    : property.location?.address?.city || property.location?.city || '';
 
   return (
     <div className="min-h-screen bg-[hsl(var(--background))]">
@@ -87,9 +229,20 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ slug:
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-8">
-            {/* Hero image placeholder */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-[hsl(var(--secondary))] to-[hsl(var(--muted))] h-72 sm:h-96 flex items-center justify-center">
-              <span className="text-8xl opacity-20">{getPropertyTypeIcon(property.type)}</span>
+            {/* Hero image */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-[hsl(var(--secondary))] to-[hsl(var(--muted))] h-72 sm:h-96">
+              {property.images?.[0] && !imgError ? (
+                <img
+                  src={property.images[0]}
+                  alt={property.name}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  onError={() => setImgError(true)}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <span className="text-8xl opacity-20">{getPropertyTypeIcon(property.type)}</span>
+                </div>
+              )}
               <div className="absolute top-4 left-4 px-3 py-1.5 rounded-full bg-gradient-to-r from-[hsl(174,72%,46%)] to-[hsl(253,63%,58%)] text-white text-sm font-semibold">
                 {getPropertyTypeLabel(property.type)}
               </div>
@@ -101,7 +254,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ slug:
                 <div>
                   <h1 className="text-2xl sm:text-3xl font-bold mb-2">{property.name}</h1>
                   <div className="flex items-center gap-4 text-sm text-[hsl(var(--muted-foreground))]">
-                    <span className="flex items-center gap-1"><MapPin className="h-4 w-4" /> {property.location.address}, {property.location.city}</span>
+                    <span className="flex items-center gap-1"><MapPin className="h-4 w-4" /> {locationAddress}{locationCity ? `, ${locationCity}` : ''}</span>
                     <span className="flex items-center gap-1"><Star className="h-4 w-4 fill-amber-400 text-amber-400" /> {property.rating.average} ({property.rating.count} reviews)</span>
                   </div>
                 </div>
@@ -110,73 +263,115 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ slug:
               <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">{property.description}</p>
 
               {/* Amenities */}
-              <div className="mt-6">
-                <h3 className="font-semibold mb-3">Amenities</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {property.amenities.map((a) => (
-                    <div key={a} className="flex items-center gap-2 p-2.5 rounded-xl bg-[hsl(var(--secondary))] text-sm">
-                      <Check className="h-4 w-4 text-[hsl(var(--primary))]" />
-                      <span className="capitalize">{a.replace('_', ' ')}</span>
-                    </div>
-                  ))}
+              {property.amenities?.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="font-semibold mb-3">Amenities</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {property.amenities.map((a) => (
+                      <div key={a} className="flex items-center gap-2 p-2.5 rounded-xl bg-[hsl(var(--secondary))] text-sm">
+                        <Check className="h-4 w-4 text-[hsl(var(--primary))]" />
+                        <span className="capitalize">{a.replace('_', ' ')}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Contact */}
+              {property.contact && (
+                <div className="mt-6">
+                  <h3 className="font-semibold mb-3">Contact</h3>
+                  <div className="flex flex-wrap gap-4 text-sm text-[hsl(var(--muted-foreground))]">
+                    {property.contact.phone && (
+                      <span className="flex items-center gap-1.5"><Phone className="h-4 w-4" /> {property.contact.phone}</span>
+                    )}
+                    {property.contact.email && (
+                      <span className="flex items-center gap-1.5"><Mail className="h-4 w-4" /> {property.contact.email}</span>
+                    )}
+                    {property.contact.website && (
+                      <span className="flex items-center gap-1.5"><Globe className="h-4 w-4" /> {property.contact.website}</span>
+                    )}
+                  </div>
+                </div>
+              )}
             </motion.div>
 
             {/* Room Selection */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-              <h3 className="font-semibold text-lg mb-4">Choose a Room</h3>
-              <div className="grid sm:grid-cols-3 gap-3">
-                {rooms.map((room) => (
-                  <button
-                    key={room._id}
-                    onClick={() => { setSelectedRoom(room); setSelectedSlots([]); }}
-                    className={`p-4 rounded-xl border text-left transition-all ${
-                      selectedRoom._id === room._id
-                        ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.05)] ring-2 ring-[hsl(var(--primary)/0.2)]"
-                        : "border-[hsl(var(--border))] hover:border-[hsl(var(--primary)/0.3)]"
-                    }`}
-                  >
-                    <h4 className="font-semibold text-sm">{room.name}</h4>
-                    <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">{room.size.value} {room.size.unit} · {room.capacity.adults} guests</p>
-                    <p className="text-lg font-bold mt-2 gradient-text">{formatPrice(room.basePrice)}<span className="text-xs text-[hsl(var(--muted-foreground))] font-normal">/hr</span></p>
-                  </button>
-                ))}
-              </div>
-            </motion.div>
+            {rooms.length > 0 && (
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <h3 className="font-semibold text-lg mb-4">Choose a Room</h3>
+                <div className="grid sm:grid-cols-3 gap-3">
+                  {rooms.map((room) => (
+                    <button
+                      key={room._id}
+                      onClick={() => setSelectedRoom(room)}
+                      className={`p-4 rounded-xl border text-left transition-all ${
+                        selectedRoom?._id === room._id
+                          ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.05)] ring-2 ring-[hsl(var(--primary)/0.2)]"
+                          : "border-[hsl(var(--border))] hover:border-[hsl(var(--primary)/0.3)]"
+                      }`}
+                    >
+                      <h4 className="font-semibold text-sm">{room.name}</h4>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
+                        {room.size ? `${room.size.value} ${room.size.unit} · ` : ''}{room.capacity?.adults || 2} guests
+                      </p>
+                      <p className="text-lg font-bold mt-2 gradient-text">
+                        {formatPrice(room.basePrice)}<span className="text-xs text-[hsl(var(--muted-foreground))] font-normal">/hr</span>
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            )}
 
             {/* Time Slot Picker */}
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
               <h3 className="font-semibold text-lg mb-4">Select Time Slots — Today</h3>
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                {DEMO_SLOTS.map((slot) => (
-                  <button
-                    key={slot._id}
-                    onClick={() => toggleSlot(slot._id, slot.status)}
-                    disabled={slot.status !== "available"}
-                    className={`p-3 rounded-xl border text-center transition-all ${
-                      selectedSlots.includes(slot._id)
-                        ? "bg-gradient-to-r from-[hsl(174,72%,46%)] to-[hsl(253,63%,58%)] text-white border-transparent shadow-lg"
-                        : slot.status === "available"
-                          ? "border-[hsl(var(--border))] hover:border-[hsl(var(--primary)/0.5)] cursor-pointer"
-                          : slot.status === "held"
-                            ? "border-amber-500/30 bg-amber-500/5 cursor-not-allowed opacity-60"
-                            : "border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.5)] cursor-not-allowed opacity-40"
-                    }`}
-                  >
-                    <div className="text-xs font-semibold">{slot.startTime} - {slot.endTime}</div>
-                    <div className={`text-xs mt-1 ${selectedSlots.includes(slot._id) ? "text-white/80" : "text-[hsl(var(--muted-foreground))]"}`}>
-                      {slot.status === "available" ? formatPrice(slot.basePrice) : slot.status === "held" ? "⏳ Held" : "✕ Booked"}
-                    </div>
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center gap-4 mt-3 text-xs text-[hsl(var(--muted-foreground))]">
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-[hsl(var(--secondary))] border border-[hsl(var(--border))]" /> Available</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-500/10 border border-amber-500/30" /> Held</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-[hsl(var(--muted)/0.5)]" /> Booked</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gradient-to-r from-[hsl(174,72%,46%)] to-[hsl(253,63%,58%)]" /> Selected</span>
-              </div>
+              {slotsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-[hsl(var(--primary))]" />
+                  <span className="ml-2 text-sm text-[hsl(var(--muted-foreground))]">Loading slots...</span>
+                </div>
+              ) : slots.length > 0 ? (
+                <>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                    {slots.map((slot) => (
+                      <button
+                        key={slot._id}
+                        onClick={() => toggleSlot(slot._id, slot.status)}
+                        disabled={slot.status !== "available"}
+                        className={`p-3 rounded-xl border text-center transition-all ${
+                          selectedSlots.includes(slot._id)
+                            ? "bg-gradient-to-r from-[hsl(174,72%,46%)] to-[hsl(253,63%,58%)] text-white border-transparent shadow-lg"
+                            : slot.status === "available"
+                              ? "border-[hsl(var(--border))] hover:border-[hsl(var(--primary)/0.5)] cursor-pointer"
+                              : slot.status === "held"
+                                ? "border-amber-500/30 bg-amber-500/5 cursor-not-allowed opacity-60"
+                                : "border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.5)] cursor-not-allowed opacity-40"
+                        }`}
+                      >
+                        <div className="text-xs font-semibold">{slot.startTime} - {slot.endTime}</div>
+                        <div className={`text-xs mt-1 ${selectedSlots.includes(slot._id) ? "text-white/80" : "text-[hsl(var(--muted-foreground))]"}`}>
+                          {slot.status === "available" ? formatPrice(slot.dynamicPrice || slot.basePrice) : slot.status === "held" ? "⏳ Held" : "✕ Booked"}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-4 mt-3 text-xs text-[hsl(var(--muted-foreground))]">
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-[hsl(var(--secondary))] border border-[hsl(var(--border))]" /> Available</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-500/10 border border-amber-500/30" /> Held</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-[hsl(var(--muted)/0.5)]" /> Booked</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gradient-to-r from-[hsl(174,72%,46%)] to-[hsl(253,63%,58%)]" /> Selected</span>
+                  </div>
+                </>
+              ) : (
+                <div className="py-12 text-center rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))]">
+                  <Clock className="mx-auto h-8 w-8 text-[hsl(var(--muted-foreground))] mb-3" />
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                    {rooms.length === 0 ? "No rooms available for this property." : "No slots available for today. Try checking back later."}
+                  </p>
+                </div>
+              )}
             </motion.div>
 
             {/* Reviews */}
@@ -208,7 +403,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ slug:
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <span className="text-2xl font-bold gradient-text">{formatPrice(selectedRoom.basePrice)}</span>
+                    <span className="text-2xl font-bold gradient-text">{formatPrice(selectedRoom?.basePrice || property.priceRange.min)}</span>
                     <span className="text-sm text-[hsl(var(--muted-foreground))]">/hour</span>
                   </div>
                   <div className="flex items-center gap-1">
@@ -220,7 +415,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ slug:
                 <div className="space-y-3 mb-6">
                   <div className="p-3 rounded-xl bg-[hsl(var(--secondary))]">
                     <div className="text-xs text-[hsl(var(--muted-foreground))] mb-1">Room</div>
-                    <div className="font-medium text-sm">{selectedRoom.name}</div>
+                    <div className="font-medium text-sm">{selectedRoom?.name || "Select a room"}</div>
                   </div>
                   <div className="p-3 rounded-xl bg-[hsl(var(--secondary))]">
                     <div className="text-xs text-[hsl(var(--muted-foreground))] mb-1">Selected Slots</div>
@@ -243,7 +438,15 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ slug:
                   </div>
                 )}
 
+                {bookingError && (
+                  <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm border border-destructive/20 flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                    <span>{bookingError}</span>
+                  </div>
+                )}
+
                 <button
+                  onClick={handleReserve}
                   disabled={selectedSlots.length === 0 || bookingLoading}
                   className="w-full py-3 rounded-xl bg-gradient-to-r from-[hsl(174,72%,46%)] to-[hsl(253,63%,58%)] text-white font-semibold shadow-lg hover:shadow-xl transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
@@ -258,7 +461,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ slug:
 
                 <div className="mt-6 pt-4 border-t border-[hsl(var(--border))] space-y-2">
                   <div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]"><Shield className="h-3.5 w-3.5 text-[hsl(var(--primary))]" /> Instant confirmation</div>
-                  <div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]"><Clock className="h-3.5 w-3.5 text-[hsl(var(--primary))]" /> Free cancellation (moderate)</div>
+                  <div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]"><Clock className="h-3.5 w-3.5 text-[hsl(var(--primary))]" /> Free cancellation ({property.policies?.cancellationPolicy || 'moderate'})</div>
                   <div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]"><Zap className="h-3.5 w-3.5 text-[hsl(var(--primary))]" /> AI-optimized pricing</div>
                 </div>
               </motion.div>

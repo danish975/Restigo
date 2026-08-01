@@ -3,7 +3,7 @@ import app from './app';
 import connectDatabase, { disconnectDatabase } from './config/database';
 import { initializeSocketIO } from './config/socket';
 import { initializeQueues } from './config/bull';
-import { redisClient } from './config/redis';
+import { connectRedis, isRedisAvailable, getRedisClient } from './config/redis';
 import { logger } from './core/utils/logger';
 import env from './config/environment';
 
@@ -13,9 +13,13 @@ const startServer = async (): Promise<void> => {
     await connectDatabase();
     logger.info('Database connection established');
 
-    // Verify Redis connection
-    await redisClient.ping();
-    logger.info('Redis connection verified');
+    // Attempt Redis connection (optional)
+    const redisConnected = await connectRedis();
+    if (redisConnected) {
+      logger.info('Redis connection verified');
+    } else {
+      logger.warn('Continuing without Redis — some features will be unavailable');
+    }
 
     // Create HTTP server
     const server = http.createServer(app);
@@ -24,9 +28,13 @@ const startServer = async (): Promise<void> => {
     initializeSocketIO(server);
     logger.info('Socket.IO initialized');
 
-    // Initialize BullMQ queues
-    await initializeQueues();
-    logger.info('BullMQ queues initialized');
+    // Initialize BullMQ queues (only if Redis is available)
+    if (isRedisAvailable()) {
+      await initializeQueues();
+      logger.info('BullMQ queues initialized');
+    } else {
+      logger.warn('BullMQ queues skipped (Redis unavailable)');
+    }
 
     // Start listening
     server.listen(env.PORT, () => {
@@ -45,7 +53,10 @@ const startServer = async (): Promise<void> => {
 
         try {
           await disconnectDatabase();
-          await redisClient.quit();
+          const redis = getRedisClient();
+          if (redis) {
+            await redis.quit();
+          }
           logger.info('All connections closed. Exiting.');
           process.exit(0);
         } catch (error) {

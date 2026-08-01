@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { useAuthStore } from "@/stores/auth-store";
 import { Clock, Eye, EyeOff, Mail, Lock, ArrowRight, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirect") || "/search";
   const { login } = useAuthStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,7 +24,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      router.push("/search");
+      router.push(redirectTo);
     } catch (err: any) {
       setError(err.response?.data?.error?.message || "Login failed. Please try again.");
     } finally {

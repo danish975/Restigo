@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { Property } from '../property/property.model';
 import { InventorySlot } from '../inventory/inventory-slot.model';
-import { redisClient } from '../../config/redis';
+import { getRedisClient } from '../../config/redis';
 import { validate } from '../../core/middleware/validate';
 import { optionalAuth } from '../../core/middleware/auth';
 import { logger } from '../../core/utils/logger';
@@ -38,11 +38,14 @@ router.get('/', optionalAuth, validate(searchQueryDto, 'query'), async (req: Req
     const limit = q.limit || 20;
 
     // Build cache key
+    const redis = getRedisClient();
     const cacheKey = `search:${JSON.stringify(q)}`;
-    const cached = await redisClient.get(cacheKey);
-    if (cached) {
-      res.status(StatusCodes.OK).json({ success: true, data: JSON.parse(cached), _cached: true });
-      return;
+    if (redis) {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        res.status(StatusCodes.OK).json({ success: true, data: JSON.parse(cached), _cached: true });
+        return;
+      }
     }
 
     // Build aggregation pipeline
@@ -143,7 +146,9 @@ router.get('/', optionalAuth, validate(searchQueryDto, 'query'), async (req: Req
     };
 
     // Cache for 30 seconds
-    await redisClient.setex(cacheKey, 30, JSON.stringify(data));
+    if (redis) {
+      await redis.setex(cacheKey, 30, JSON.stringify(data));
+    }
 
     res.status(StatusCodes.OK).json({ success: true, data });
   } catch (error) { next(error); }
@@ -160,7 +165,11 @@ router.get('/slots', optionalAuth, async (req: Request, res: Response, next: Nex
 
     const filter: any = { propertyId, status: 'available' };
     if (roomId) filter.roomId = roomId;
-    if (date) filter.date = new Date(date as string);
+    if (date) {
+      const dateStr = date as string;
+      const [year, month, day] = dateStr.split('-').map(Number);
+      filter.date = new Date(year, month - 1, day);
+    }
     if (startTime) filter.startTime = { $gte: startTime };
     if (endTime) filter.endTime = { $lte: endTime };
 

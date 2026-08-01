@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { redisClient } from '../../config/redis';
+import { getRedisClient } from '../../config/redis';
 import { logger } from '../../core/utils/logger';
 import env from '../../config/environment';
 
@@ -46,13 +46,20 @@ export class LockService {
    * Returns lockId on success, null on failure
    */
   async acquireLock(slotId: string, ttlMs?: number): Promise<string | null> {
+    const redis = getRedisClient();
+    if (!redis) {
+      // Without Redis, return a local lock ID (single-instance fallback)
+      logger.warn({ slotId }, 'Lock acquired without Redis (no distributed guarantee)');
+      return uuidv4();
+    }
+
     const lockKey = `${this.lockPrefix}${slotId}`;
     const lockId = uuidv4();
     const ttl = ttlMs || this.defaultTTL;
 
     try {
       // Atomic SET NX PX — only one caller wins
-      const result = await redisClient.set(lockKey, lockId, 'PX', ttl, 'NX');
+      const result = await redis.set(lockKey, lockId, 'PX', ttl, 'NX');
 
       if (result === 'OK') {
         logger.debug({ slotId, lockId, ttl }, 'Lock acquired');
@@ -72,10 +79,16 @@ export class LockService {
    * Uses Lua script for atomicity (GET + DEL in single operation)
    */
   async releaseLock(slotId: string, lockId: string): Promise<boolean> {
+    const redis = getRedisClient();
+    if (!redis) {
+      logger.warn({ slotId, lockId }, 'Lock released without Redis');
+      return true;
+    }
+
     const lockKey = `${this.lockPrefix}${slotId}`;
 
     try {
-      const result = await redisClient.eval(
+      const result = await redis.eval(
         this.releaseLuaScript,
         1,
         lockKey,
@@ -99,10 +112,13 @@ export class LockService {
    * Extend lock TTL — only if we still own it
    */
   async extendLock(slotId: string, lockId: string, additionalTTLMs: number): Promise<boolean> {
+    const redis = getRedisClient();
+    if (!redis) return true;
+
     const lockKey = `${this.lockPrefix}${slotId}`;
 
     try {
-      const result = await redisClient.eval(
+      const result = await redis.eval(
         this.extendLuaScript,
         1,
         lockKey,
@@ -120,8 +136,11 @@ export class LockService {
    * Check if a slot is currently locked
    */
   async isLocked(slotId: string): Promise<boolean> {
+    const redis = getRedisClient();
+    if (!redis) return false;
+
     const lockKey = `${this.lockPrefix}${slotId}`;
-    const exists = await redisClient.exists(lockKey);
+    const exists = await redis.exists(lockKey);
     return exists === 1;
   }
 
@@ -129,8 +148,11 @@ export class LockService {
    * Get remaining TTL for a lock
    */
   async getLockTTL(slotId: string): Promise<number> {
+    const redis = getRedisClient();
+    if (!redis) return -1;
+
     const lockKey = `${this.lockPrefix}${slotId}`;
-    return redisClient.pttl(lockKey);
+    return redis.pttl(lockKey);
   }
 }
 

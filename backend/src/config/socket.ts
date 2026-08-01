@@ -1,7 +1,7 @@
 import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { logger } from '../core/utils/logger';
-import { redisPublisher, redisSubscriber } from './redis';
+import { getRedisPublisher, getRedisSubscriber, isRedisAvailable } from './redis';
 import env from './environment';
 
 let io: Server;
@@ -64,20 +64,27 @@ export const initializeSocketIO = (httpServer: HttpServer): Server => {
     });
   });
 
-  // Subscribe to Redis channels for cross-instance communication
-  setupRedisSubscriptions();
+  // Subscribe to Redis channels for cross-instance communication (only if Redis available)
+  if (isRedisAvailable()) {
+    setupRedisSubscriptions();
+  } else {
+    logger.warn('Socket.IO: Redis pub/sub disabled (Redis unavailable)');
+  }
 
   logger.info('Socket.IO server initialized');
   return io;
 };
 
 const setupRedisSubscriptions = (): void => {
-  redisSubscriber.subscribe(
+  const subscriber = getRedisSubscriber();
+  if (!subscriber) return;
+
+  subscriber.subscribe(
     'inventory:update',
     'booking:update',
     'notification:push',
     (err, count) => {
-      redisSubscriber.on('error', (error) => {
+      subscriber.on('error', (error) => {
         logger.error({ err: error }, 'Redis subscribe error:');
       });
       if (err) {
@@ -87,7 +94,7 @@ const setupRedisSubscriptions = (): void => {
     }
   );
 
-  redisSubscriber.on('message', (channel: string, message: string) => {
+  subscriber.on('message', (channel: string, message: string) => {
     try {
       const data = JSON.parse(message);
 
@@ -125,7 +132,13 @@ export const broadcastInventoryUpdate = async (
   data?: Record<string, unknown>
 ): Promise<void> => {
   const payload = { propertyId, slotId, status, ...data, timestamp: Date.now() };
-  await redisPublisher.publish('inventory:update', JSON.stringify(payload));
+  const publisher = getRedisPublisher();
+  if (publisher) {
+    await publisher.publish('inventory:update', JSON.stringify(payload));
+  } else {
+    // Fallback: emit directly (single-instance only)
+    io?.to(`property:${propertyId}`).emit('slot:updated', payload);
+  }
 };
 
 // Helper to send user notification
@@ -134,7 +147,13 @@ export const sendUserNotification = async (
   notification: { type: string; title: string; message: string; data?: Record<string, unknown> }
 ): Promise<void> => {
   const payload = { userId, ...notification, timestamp: Date.now() };
-  await redisPublisher.publish('notification:push', JSON.stringify(payload));
+  const publisher = getRedisPublisher();
+  if (publisher) {
+    await publisher.publish('notification:push', JSON.stringify(payload));
+  } else {
+    // Fallback: emit directly (single-instance only)
+    io?.to(`user:${userId}`).emit('notification', payload);
+  }
 };
 
 export default { initializeSocketIO, getIO, broadcastInventoryUpdate, sendUserNotification };

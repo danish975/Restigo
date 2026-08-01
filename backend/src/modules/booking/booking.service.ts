@@ -135,12 +135,14 @@ export class BookingService {
         await session.commitTransaction();
         session.endSession();
 
-        // Schedule hold expiration job
-        await bookingExpirationQueue.add(
-          'expire-hold',
-          { bookingId: booking._id.toString(), slotIds },
-          { delay: env.HOLD_DURATION_MINUTES * 60 * 1000, jobId: `hold-${booking._id}` }
-        );
+        // Schedule hold expiration job (if Redis/BullMQ available)
+        if (bookingExpirationQueue) {
+          await bookingExpirationQueue.add(
+            'expire-hold',
+            { bookingId: booking._id.toString(), slotIds },
+            { delay: env.HOLD_DURATION_MINUTES * 60 * 1000, jobId: `hold-${booking._id}` }
+          );
+        }
 
         // Broadcast inventory updates
         for (const slot of slots) {
@@ -225,10 +227,12 @@ export class BookingService {
       session.endSession();
 
       // Remove expiration job
-      try {
-        const job = await bookingExpirationQueue.getJob(`hold-${booking._id}`);
-        if (job) await job.remove();
-      } catch { /* job may have already been processed */ }
+      if (bookingExpirationQueue) {
+        try {
+          const job = await bookingExpirationQueue.getJob(`hold-${booking._id}`);
+          if (job) await job.remove();
+        } catch { /* job may have already been processed */ }
+      }
 
       // Broadcast updates
       for (const slotId of booking.slotIds) {
@@ -240,9 +244,11 @@ export class BookingService {
       }
 
       // Queue confirmation notification
-      await notificationQueue.add('booking-confirmed', {
-        userId, bookingId: booking._id.toString(), bookingCode: booking.bookingCode,
-      });
+      if (notificationQueue) {
+        await notificationQueue.add('booking-confirmed', {
+          userId, bookingId: booking._id.toString(), bookingCode: booking.bookingCode,
+        });
+      }
 
       await sendUserNotification(userId, {
         type: 'booking_confirmed',
