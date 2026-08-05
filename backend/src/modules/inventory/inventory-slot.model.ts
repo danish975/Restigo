@@ -51,7 +51,7 @@ const inventorySlotSchema = new Schema<IInventorySlot>(
     endTime: {
       type: String,
       required: [true, 'End time is required'],
-      match: [/^([01]\d|2[0-3]):([0-5]\d)$/, 'Invalid time format (HH:MM)'],
+      match: [/^([01]\d|2[0-4]):([0-5]\d)$/, 'Invalid time format (HH:MM)'],
     },
     durationMinutes: {
       type: Number,

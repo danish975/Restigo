@@ -163,12 +163,14 @@ router.get('/slots', optionalAuth, async (req: Request, res: Response, next: Nex
       return;
     }
 
-    const filter: any = { propertyId, status: 'available' };
+    const filter: any = { propertyId, status: { $in: ['available', 'held', 'booked'] } };
     if (roomId) filter.roomId = roomId;
     if (date) {
       const dateStr = date as string;
       const [year, month, day] = dateStr.split('-').map(Number);
-      filter.date = new Date(year, month - 1, day);
+      const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
+      const endOfDay = new Date(year, month - 1, day + 1, 0, 0, 0, 0);
+      filter.date = { $gte: startOfDay, $lt: endOfDay };
     }
     if (startTime) filter.startTime = { $gte: startTime };
     if (endTime) filter.endTime = { $lte: endTime };

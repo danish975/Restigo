@@ -119,7 +119,10 @@ router.get(
       if (propertyId) filter.propertyId = propertyId;
 
       if (date) {
-        filter.date = new Date(date as string);
+        const d = new Date(date as string);
+        const nextDay = new Date(d);
+        nextDay.setDate(nextDay.getDate() + 1);
+        filter.date = { $gte: d, $lt: nextDay };
       } else if (startDate && endDate) {
         filter.date = {
           $gte: new Date(startDate as string),
